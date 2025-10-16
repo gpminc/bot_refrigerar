@@ -4,7 +4,7 @@ from datetime import datetime
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
 from config import DATABASE_URL
-from models import db, Cliente, Chamado
+from models import db
 from flask_cors import CORS
 from flask_admin import Admin, AdminIndexView, expose
 from flask_admin.contrib.sqla import ModelView
@@ -152,21 +152,21 @@ def criar_admin():
 def index():
     return render_template('index.html')  # Ou o caminho para o arquivo HTML
 
-@app.route('/atender')
-def atender():
-    id_chamado = request.args.get("id_chamado")
-    colaborador = request.args.get("colaborador")
+# @app.route('/atender')
+# def atender():
+#     id_chamado = request.args.get("id_chamado")
+#     colaborador = request.args.get("colaborador")
 
-    chamado = Chamado.query.filter_by(id=id_chamado).first()
+#     chamado = Chamado.query.filter_by(id=id_chamado).first()
 
-    if not chamado:
-        return {"erro": "Chamado não encontrado"}, 404
+#     if not chamado:
+#         return {"erro": "Chamado não encontrado"}, 404
 
-    chamado.status = "emandamento"
-    chamado.pessoa_em_andamento = colaborador
-    db.session.commit()
+#     chamado.status = "emandamento"
+#     chamado.pessoa_em_andamento = colaborador
+#     db.session.commit()
 
-    return jsonify({"mensagem": "Chamado atualizado com sucesso"}), 200
+#     return jsonify({"mensagem": "Chamado atualizado com sucesso"}), 200
 
 
 
@@ -357,211 +357,211 @@ def processar_mensagem():
     return str(resposta)
 
 
-@app.route("/chamados_abertos", methods=["GET"])
-def chamados_abertos():
+# @app.route("/chamados_abertos", methods=["GET"])
+# def chamados_abertos():
     
-    # Obter todos os chamados abertos, separados por setor
-    chamados_ti = Chamado.query.filter_by(setor="TI", status="Aberto").all()
-    chamados_manutencao = Chamado.query.filter_by(setor="Manutenção", status="Aberto").all()
-    chamados_apoio = Chamado.query.filter_by(setor="Apoio", status="Aberto").all()
+#     # Obter todos os chamados abertos, separados por setor
+#     chamados_ti = Chamado.query.filter_by(setor="TI", status="Aberto").all()
+#     chamados_manutencao = Chamado.query.filter_by(setor="Manutenção", status="Aberto").all()
+#     chamados_apoio = Chamado.query.filter_by(setor="Apoio", status="Aberto").all()
     
-    # Organizar os dados para enviar como JSON
-    chamados_data = {
-        "TI": [{
-            "id": chamado.id,
-            "descricao": chamado.descricao,
-            "status":chamado.status,
-            "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-            "horario_criacao": utc_tz.localize(chamado.horario_criacao).astimezone(brasil_tz).strftime('%H:%M') if chamado.horario_criacao else None,
-            "chamado_id": chamado.chamado_id,
-            "setor_cliente": chamado.setor_cliente,
-            "nome": chamado.nome
-        } for chamado in chamados_ti],
+#     # Organizar os dados para enviar como JSON
+#     chamados_data = {
+#         "TI": [{
+#             "id": chamado.id,
+#             "descricao": chamado.descricao,
+#             "status":chamado.status,
+#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
+#             "horario_criacao": utc_tz.localize(chamado.horario_criacao).astimezone(brasil_tz).strftime('%H:%M') if chamado.horario_criacao else None,
+#             "chamado_id": chamado.chamado_id,
+#             "setor_cliente": chamado.setor_cliente,
+#             "nome": chamado.nome
+#         } for chamado in chamados_ti],
         
-        "Manutencao": [{
-            "id": chamado.id,
-            "descricao": chamado.descricao,
-            "status":chamado.status,
-            "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-            "horario_criacao": utc_tz.localize(chamado.horario_criacao).astimezone(brasil_tz).strftime('%H:%M') if chamado.horario_criacao else None,
-            "setor_cliente": chamado.setor_cliente,
-            "nome": chamado.nome
-        } for chamado in chamados_manutencao],
+#         "Manutencao": [{
+#             "id": chamado.id,
+#             "descricao": chamado.descricao,
+#             "status":chamado.status,
+#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
+#             "horario_criacao": utc_tz.localize(chamado.horario_criacao).astimezone(brasil_tz).strftime('%H:%M') if chamado.horario_criacao else None,
+#             "setor_cliente": chamado.setor_cliente,
+#             "nome": chamado.nome
+#         } for chamado in chamados_manutencao],
         
-        "Apoio": [{
-            "id": chamado.id,
-            "descricao": chamado.descricao,
-            "status":chamado.status,
-            "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-            "horario_criacao": utc_tz.localize(chamado.horario_criacao).astimezone(brasil_tz).strftime('%H:%M') if chamado.horario_criacao else None,
-            "setor_cliente": chamado.setor_cliente,
-            "nome": chamado.nome,
-            "sala": chamado.sala
-        } for chamado in chamados_apoio]
-    }
+#         "Apoio": [{
+#             "id": chamado.id,
+#             "descricao": chamado.descricao,
+#             "status":chamado.status,
+#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
+#             "horario_criacao": utc_tz.localize(chamado.horario_criacao).astimezone(brasil_tz).strftime('%H:%M') if chamado.horario_criacao else None,
+#             "setor_cliente": chamado.setor_cliente,
+#             "nome": chamado.nome,
+#             "sala": chamado.sala
+#         } for chamado in chamados_apoio]
+#     }
     
-    return jsonify(chamados_data)
+#     return jsonify(chamados_data)
 
 
-@app.route("/chamados_concluidos", methods=["GET"])
-def chamados_concluidos():
+# @app.route("/chamados_concluidos", methods=["GET"])
+# def chamados_concluidos():
     
-    # Obter todos os chamados concluidos, separados por setor
-    chamados_ti = Chamado.query.filter_by(setor="TI", status="Concluído").all()
-    chamados_manutencao = Chamado.query.filter_by(setor="Manutenção", status="Concluído").all()
-    chamados_apoio = Chamado.query.filter_by(setor="Apoio", status="Concluído").all()
+#     # Obter todos os chamados concluidos, separados por setor
+#     chamados_ti = Chamado.query.filter_by(setor="TI", status="Concluído").all()
+#     chamados_manutencao = Chamado.query.filter_by(setor="Manutenção", status="Concluído").all()
+#     chamados_apoio = Chamado.query.filter_by(setor="Apoio", status="Concluído").all()
     
-    # Organizar os dados para enviar como JSON
-    chamados_data = {
-        "TI": [{
-            "id": chamado.id,
-            "descricao": chamado.descricao,
-            "status":chamado.status,
-            "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-            "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
-            "chamado_id": chamado.chamado_id,
-            "setor_cliente": chamado.setor_cliente,
-            "nome": chamado.nome,
-            "pessoa_conclusao": chamado.pessoa_conclusao,
-            "data": chamado.data.strftime('%d/%m/%Y')
-        } for chamado in chamados_ti],
+#     # Organizar os dados para enviar como JSON
+#     chamados_data = {
+#         "TI": [{
+#             "id": chamado.id,
+#             "descricao": chamado.descricao,
+#             "status":chamado.status,
+#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
+#             "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
+#             "chamado_id": chamado.chamado_id,
+#             "setor_cliente": chamado.setor_cliente,
+#             "nome": chamado.nome,
+#             "pessoa_conclusao": chamado.pessoa_conclusao,
+#             "data": chamado.data.strftime('%d/%m/%Y')
+#         } for chamado in chamados_ti],
         
-        "Manutencao": [{
-            "id": chamado.id,
-            "descricao": chamado.descricao,
-            "status":chamado.status,
-            "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-            "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
-            "setor_cliente": chamado.setor_cliente,
-            "nome": chamado.nome,
-            "pessoa_conclusao": chamado.pessoa_conclusao,
-            "data": chamado.data.strftime('%d/%m/%Y')
-        } for chamado in chamados_manutencao],
+#         "Manutencao": [{
+#             "id": chamado.id,
+#             "descricao": chamado.descricao,
+#             "status":chamado.status,
+#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
+#             "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
+#             "setor_cliente": chamado.setor_cliente,
+#             "nome": chamado.nome,
+#             "pessoa_conclusao": chamado.pessoa_conclusao,
+#             "data": chamado.data.strftime('%d/%m/%Y')
+#         } for chamado in chamados_manutencao],
         
-        "Apoio": [{
-            "id": chamado.id,
-            "descricao": chamado.descricao,
-            "status":chamado.status,
-            "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-            "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
-            "setor_cliente": chamado.setor_cliente,
-            "nome": chamado.nome,
-            "pessoa_conclusao": chamado.pessoa_conclusao,
-            "sala": chamado.sala,
-            "data": chamado.data.strftime('%d/%m/%Y')
-        } for chamado in chamados_apoio]
-    }
+#         "Apoio": [{
+#             "id": chamado.id,
+#             "descricao": chamado.descricao,
+#             "status":chamado.status,
+#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
+#             "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
+#             "setor_cliente": chamado.setor_cliente,
+#             "nome": chamado.nome,
+#             "pessoa_conclusao": chamado.pessoa_conclusao,
+#             "sala": chamado.sala,
+#             "data": chamado.data.strftime('%d/%m/%Y')
+#         } for chamado in chamados_apoio]
+#     }
     
-    return jsonify(chamados_data)
+#     return jsonify(chamados_data)
 
-@app.route("/chamados_andamento", methods=["GET"])
-def chamados_andamento():
+# @app.route("/chamados_andamento", methods=["GET"])
+# def chamados_andamento():
     
-    # Obter todos os chamados concluidos, separados por setor
-    chamados_ti = Chamado.query.filter_by(setor="TI", status="Em andamento").all()
-    chamados_manutencao = Chamado.query.filter_by(setor="Manutenção", status="Em andamento").all()
-    chamados_apoio = Chamado.query.filter_by(setor="Apoio", status="Em andamento").all()
+#     # Obter todos os chamados concluidos, separados por setor
+#     chamados_ti = Chamado.query.filter_by(setor="TI", status="Em andamento").all()
+#     chamados_manutencao = Chamado.query.filter_by(setor="Manutenção", status="Em andamento").all()
+#     chamados_apoio = Chamado.query.filter_by(setor="Apoio", status="Em andamento").all()
     
-    # Organizar os dados para enviar como JSON
-    chamados_data = {
-        "TI": [{
-            "id": chamado.id,
-            "descricao": chamado.descricao,
-            "status":chamado.status,
-            "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-            "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
-            "chamado_id": chamado.chamado_id,
-            "setor_cliente": chamado.setor_cliente,
-            "nome": chamado.nome,
-            "pessoa_conclusao": chamado.pessoa_conclusao,
-            "pessoa_em_andamento": chamado.pessoa_em_andamento,
-            "data": chamado.data
-        } for chamado in chamados_ti],
+#     # Organizar os dados para enviar como JSON
+#     chamados_data = {
+#         "TI": [{
+#             "id": chamado.id,
+#             "descricao": chamado.descricao,
+#             "status":chamado.status,
+#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
+#             "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
+#             "chamado_id": chamado.chamado_id,
+#             "setor_cliente": chamado.setor_cliente,
+#             "nome": chamado.nome,
+#             "pessoa_conclusao": chamado.pessoa_conclusao,
+#             "pessoa_em_andamento": chamado.pessoa_em_andamento,
+#             "data": chamado.data
+#         } for chamado in chamados_ti],
         
-        "Manutencao": [{
-            "id": chamado.id,
-            "descricao": chamado.descricao,
-            "status":chamado.status,
-            "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-            "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
-            "setor_cliente": chamado.setor_cliente,
-            "nome": chamado.nome,
-            "pessoa_conclusao": chamado.pessoa_conclusao,
-            "pessoa_em_andamento": chamado.pessoa_em_andamento,
-            "data": chamado.data
-        } for chamado in chamados_manutencao],
+#         "Manutencao": [{
+#             "id": chamado.id,
+#             "descricao": chamado.descricao,
+#             "status":chamado.status,
+#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
+#             "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
+#             "setor_cliente": chamado.setor_cliente,
+#             "nome": chamado.nome,
+#             "pessoa_conclusao": chamado.pessoa_conclusao,
+#             "pessoa_em_andamento": chamado.pessoa_em_andamento,
+#             "data": chamado.data
+#         } for chamado in chamados_manutencao],
         
-        "Apoio": [{
-            "id": chamado.id,
-            "descricao": chamado.descricao,
-            "status":chamado.status,
-            "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-            "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
-            "setor_cliente": chamado.setor_cliente,
-            "nome": chamado.nome,
-            "pessoa_conclusao": chamado.pessoa_conclusao,
-            "pessoa_em_andamento": chamado.pessoa_em_andamento,
-            "sala": chamado.sala,
-            "data": chamado.data
-        } for chamado in chamados_apoio]
-    }
+#         "Apoio": [{
+#             "id": chamado.id,
+#             "descricao": chamado.descricao,
+#             "status":chamado.status,
+#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
+#             "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
+#             "setor_cliente": chamado.setor_cliente,
+#             "nome": chamado.nome,
+#             "pessoa_conclusao": chamado.pessoa_conclusao,
+#             "pessoa_em_andamento": chamado.pessoa_em_andamento,
+#             "sala": chamado.sala,
+#             "data": chamado.data
+#         } for chamado in chamados_apoio]
+#     }
     
-    return jsonify(chamados_data)
+#     return jsonify(chamados_data)
 
 
-@app.route('/chamados-atender/<int:id>', methods=['POST'])
-def atender_chamado(id):
-    data = request.get_json()
+# @app.route('/chamados-atender/<int:id>', methods=['POST'])
+# def atender_chamado(id):
+#     data = request.get_json()
 
-    nome_responsavel = data.get("nome")
-    telefone_responsavel = data.get("telefone")
+#     nome_responsavel = data.get("nome")
+#     telefone_responsavel = data.get("telefone")
 
-    if not nome_responsavel or not telefone_responsavel:
-        return jsonify({"erro": "Nome e telefone são obrigatórios."}), 400
+#     if not nome_responsavel or not telefone_responsavel:
+#         return jsonify({"erro": "Nome e telefone são obrigatórios."}), 400
 
-    chamado = Chamado.query.get_or_404(id)
+#     chamado = Chamado.query.get_or_404(id)
 
-    if chamado.status != "Aberto":
-        return jsonify({"erro": "Chamado já foi atendido ou está em andamento."}), 400
+#     if chamado.status != "Aberto":
+#         return jsonify({"erro": "Chamado já foi atendido ou está em andamento."}), 400
 
-    chamado.pessoa_em_andamento = nome_responsavel
-    chamado.status = "Em andamento"
+#     chamado.pessoa_em_andamento = nome_responsavel
+#     chamado.status = "Em andamento"
 
-    db.session.commit()
+#     db.session.commit()
 
-    return jsonify({
-        "mensagem": "Chamado atribuído com sucesso.",
-        "chamado_id": chamado.id,
-        "responsavel": nome_responsavel
-    })
+#     return jsonify({
+#         "mensagem": "Chamado atribuído com sucesso.",
+#         "chamado_id": chamado.id,
+#         "responsavel": nome_responsavel
+#     })
 
-@app.route('/chamados-concluir/<int:id>', methods=['POST'])
-def concluir_chamado(id):
-    data = request.get_json()
+# @app.route('/chamados-concluir/<int:id>', methods=['POST'])
+# def concluir_chamado(id):
+#     data = request.get_json()
 
-    nome_responsavel = data.get("nome")
-    telefone_responsavel = data.get("telefone")
+#     nome_responsavel = data.get("nome")
+#     telefone_responsavel = data.get("telefone")
 
-    if not nome_responsavel or not telefone_responsavel:
-        return jsonify({"erro": "Nome e telefone são obrigatórios."}), 400
+#     if not nome_responsavel or not telefone_responsavel:
+#         return jsonify({"erro": "Nome e telefone são obrigatórios."}), 400
 
-    chamado = Chamado.query.get_or_404(id)
+#     chamado = Chamado.query.get_or_404(id)
 
-    if chamado.status != "Aberto" and chamado.status != "Em andamento":
-        return jsonify({"erro": "Chamado já foi atendido ou está em andamento."}), 400
+#     if chamado.status != "Aberto" and chamado.status != "Em andamento":
+#         return jsonify({"erro": "Chamado já foi atendido ou está em andamento."}), 400
 
-    chamado.horario = datetime.now(brasil_tz).time()
-    chamado.data = datetime.now().date()
-    chamado.pessoa_conclusao = nome_responsavel
-    chamado.status = "Concluído"
+#     chamado.horario = datetime.now(brasil_tz).time()
+#     chamado.data = datetime.now().date()
+#     chamado.pessoa_conclusao = nome_responsavel
+#     chamado.status = "Concluído"
 
-    db.session.commit()
+#     db.session.commit()
 
-    return jsonify({
-        "mensagem": "Chamado concluído com sucesso.",
-        "chamado_id": chamado.id,
-        "responsavel": nome_responsavel
-    })
+#     return jsonify({
+#         "mensagem": "Chamado concluído com sucesso.",
+#         "chamado_id": chamado.id,
+#         "responsavel": nome_responsavel
+#     })
     
 if __name__ == "__main__":
     criar_tabelas()  # Garantir que as tabelas sejam criadas
