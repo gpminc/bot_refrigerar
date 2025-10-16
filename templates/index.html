@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chamados Abertos</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f8f9fa;
+            color: #495057;
+            padding: 20px;
+        }
+
+        /* Cores para cada setor */
+        #ti { border-top: 5px solid #007bff; }
+        #manutencao { border-top: 5px solid #28a745; }
+        #apoio { border-top: 5px solid #ffc107; }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            color: #007bff;
+        }
+
+        .setores {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .setor {
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            flex: 1;
+            padding: 20px;
+            height: 500px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .setor h2 {
+            color: #007bff;
+            margin-bottom: 15px;
+            font-size: 1.8em;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+
+        .chamados {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .chamados::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .chamados::-webkit-scrollbar-thumb {
+            background: #007bff;
+            border-radius: 4px;
+        }
+
+        .chamado {
+            background: #f8f9fa;
+            border-left: 5px solid #007bff;
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 5px;
+            transition: background 0.3s;
+            text-align: left;
+            font-size: 0.95em;
+        }
+
+        .chamado:hover {
+            background: #e2e6ea;
+        }
+
+.chamado-maximized {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: white;
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 3em; /* Reduzindo um pouco o tamanho da fonte para melhor leitura */
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.chamado-maximized .chamado-content {
+    background-color: #f8f9fa;
+    border: 1px solid #ddd;
+    padding: 30px; /* Aumentando o padding para maior espaço interno */
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    max-width: 90%; /* Aumentando a largura máxima para maior aproveitamento da tela */
+    text-align: left;
+}
+
+.chamado-content{
+    width:100%;
+    height: 100vh:
+}
+
+.chamado-maximized .setor-nome {
+    font-size: 2em; /* Aumentando o tamanho da fonte para o nome do setor */
+    font-weight: bold;
+    color: #007bff;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+        @media (max-width: 768px) {
+            .setores {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .setor {
+                width: 100%;
+                max-width: 400px;
+                margin-bottom: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Chamados Abertos</h1>
+        <div class="setores">
+            <div id="ti" class="setor">
+                <h2>TI</h2>
+                <div class="chamados" id="ti-list"></div>
+            </div>
+            <div id="manutencao" class="setor">
+                <h2>Manutenção</h2>
+                <div class="chamados" id="manutencao-list"></div>
+            </div>
+            <div id="apoio" class="setor">
+                <h2>Apoio</h2>
+                <div class="chamados" id="apoio-list"></div>
+            </div>
+        </div>
+    </div>
+    <audio id="notificacaoAudio" src="/static/notification.mp3"></audio>
+    <script>
+        let chamadosAnteriores = {
+    "ti-list": [],
+    "manutencao-list": [],
+    "apoio-list": []
+};
+let chamadoMaximizando = null; // Armazena o ID do chamado maximizado
+
+function fetchChamados() {
+    fetch('/chamados_abertos')
+        .then(response => response.json())
+        .then(data => {
+            verificarNovosChamados("ti-list", data.TI, true);
+            verificarNovosChamados("manutencao-list", data.Manutencao, false);
+            verificarNovosChamados("apoio-list", data.Apoio, false);
+        });
+}
+
+function verificarNovosChamados(elementoId, chamados, incluirChamadoId) {
+    const lista = document.getElementById(elementoId);
+    const chamadosAtuais = chamados.map(chamado => chamado.id);
+
+    const novosChamados = chamadosAtuais.filter(id => !chamadosAnteriores[elementoId].includes(id));
+    if (novosChamados.length > 0 && chamadosAnteriores[elementoId].length > 0) {
+        reproduzirNotificacao();
+        maximizarChamado(chamados.find(chamado => novosChamados.includes(chamado.id)), elementoId); // Maximiza o primeiro novo chamado
+    }
+
+    chamadosAnteriores[elementoId] = chamadosAtuais;
+    atualizarChamados(elementoId, chamados, incluirChamadoId);
+}
+
+function reproduzirNotificacao() {
+    console.log("Reproduzindo notificação...");
+    const audio = document.getElementById("notificacaoAudio");
+    audio.play();
+}
+
+function maximizarChamado(chamado, elementoId) {
+    if (chamadoMaximizando) {
+        return;
+    }
+
+    chamadoMaximizando = chamado.id;
+    const div = document.createElement("div");
+    div.classList.add("chamado-maximized");
+
+    // Determina o nome do setor com base no elementoId
+    let nomeSetor = "";
+    if (elementoId === "ti-list") {
+        nomeSetor = "TI";
+    } else if (elementoId === "manutencao-list") {
+        nomeSetor = "Manutenção";
+    } else if (elementoId === "apoio-list") {
+        nomeSetor = "Apoio";
+    }
+
+    div.innerHTML = `
+        <div class="chamado-content">
+            <div class="setor-nome">${nomeSetor}</div>
+            <strong>ID:</strong> ${chamado.id}<br>
+            ${elementoId === "ti-list" ? `<strong>Chamado ID:</strong> ${chamado.chamado_id}<br>` : ''}
+            <strong>Nome:</strong> ${chamado.nome}<br>
+            <strong>Setor Cliente:</strong> ${chamado.setor_cliente}<br>
+            <strong>Descrição:</strong> ${chamado.descricao}<br>
+            <strong>Data:</strong> ${chamado.data} | <strong>Horário:</strong> ${chamado.horario}
+        </div>
+    `;
+    document.body.appendChild(div);
+
+    setTimeout(() => {
+        div.remove();
+        chamadoMaximizando = null;
+    }, 10000);
+}
+function atualizarChamados(elementoId, chamados, incluirChamadoId) {
+    const lista = document.getElementById(elementoId);
+    lista.innerHTML = '';
+
+    chamados.forEach(chamado => {
+        const div = document.createElement("div");
+        div.classList.add("chamado");
+
+        div.innerHTML = `
+            <strong>ID:</strong> ${chamado.id}<br>
+            ${incluirChamadoId ? `<strong>Chamado ID:</strong> ${chamado.chamado_id}<br>` : ''}
+            <strong>Nome:</strong> ${chamado.nome}<br>
+            <strong>Setor:</strong> ${chamado.setor_cliente}<br>
+            <strong>Descrição:</strong> ${chamado.descricao}<br>
+            <strong>Data:</strong> ${chamado.data} | <strong>Horário:</strong> ${chamado.horario}
+        `;
+        lista.appendChild(div);
+    });
+
+    lista.scrollTop = lista.scrollHeight;
+}
+
+setInterval(fetchChamados, 10000);
+fetchChamados();
+
+    </script>
+</body>
+</html>
