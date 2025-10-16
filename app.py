@@ -99,7 +99,7 @@ class AgendamentoModelView(SecureModelView):
     column_filters = ['status', 'data_hora']
 
 # Registrar views do admin
-with app.app.context():
+with app.app_context():
 
     # Adicione as novas views
     admin.add_view(UsuarioModelView(Usuario, db.session))
