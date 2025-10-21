@@ -1,63 +1,48 @@
+import os
+from dotenv import load_dotenv
 from flask import Flask, request, jsonify, redirect, url_for, render_template
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
-from config import DATABASE_URL
-from models import db
 from flask_cors import CORS
 from flask_admin import Admin, AdminIndexView, expose
 from flask_admin.contrib.sqla import ModelView
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from werkzeug.security import generate_password_hash, check_password_hash
 import pytz
-import os
-from dotenv import load_dotenv
-from models import db, Usuario, Servico, Agendamento 
+from datetime import datetime, timedelta
 
+# --- Configuração Inicial ---
 load_dotenv()
-
 app = Flask(__name__)
 CORS(app)
 
+# Carregar das variáveis de ambiente
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
-
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db.init_app(app)
-# Configurar painel de administração
-admin = Admin(app, name='My Admin Panel', template_mode='bootstrap3')
-
-
-
-def criar_tabelas():
-    with app.app_context():
-        db.create_all()
-
-
-brasil_tz = pytz.timezone('America/Sao_Paulo')
-utc_tz = pytz.utc
-
-from twilio.rest import Client
-
+# Credenciais do Twilio
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN')
 TWILIO_WHATSAPP_NUMBER = os.environ.get('TWILIO_WHATSAPP_NUMBER')
-# Instanciar o cliente Twilio com as credenciais
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
+# Lista de telefones de administradores (do .env)
+ADMIN_PHONES = os.environ.get("ADMIN_PHONES", "").split(",")
 
+# Banco de Dados e Modelos
+from models import db, Usuario, Servico, Agendamento
+db.init_app(app)
+
+# Fusos Horários
+brasil_tz = pytz.timezone('America/Sao_Paulo')
+utc_tz = pytz.utc
+
+# --- Configuração do Admin e Login ---
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-
-# Função para criar tabelas
-def criar_tabelas():
-    with app.app_context():
-        db.create_all()
-
-# Modelo de usuário com senha segura
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -73,7 +58,6 @@ class User(UserMixin, db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Admin protegido
 class MyAdminIndexView(AdminIndexView):
     @expose('/')
     def index(self):
@@ -85,30 +69,31 @@ class SecureModelView(ModelView):
     def is_accessible(self):
         return current_user.is_authenticated
 
-# Classes de visualização do Admin (pode customizar colunas, etc.)
 class UsuarioModelView(SecureModelView):
-    column_list = ['nome', 'telefone', 'estado_atual'] # Colunas que aparecem na lista
-    column_searchable_list = ['nome', 'telefone'] # Campos pesquisáveis
+    column_list = ['nome', 'telefone', 'estado_atual']
+    column_searchable_list = ['nome', 'telefone']
 
 class ServicoModelView(SecureModelView):
     column_list = ['nome', 'duracao_minutos']
-    form_columns = ['nome', 'descricao', 'duracao_minutos'] # Campos no form de criação/edição
+    form_columns = ['nome', 'descricao', 'duracao_minutos']
 
 class AgendamentoModelView(SecureModelView):
     column_list = ['usuario.nome', 'servico.nome', 'data_hora', 'status']
     column_filters = ['status', 'data_hora']
 
-# Registrar views do admin
-with app.app_context():
+admin = Admin(app, name='Painel Admin', template_mode='bootstrap3', index_view=MyAdminIndexView())
 
-    # Adicione as novas views
+with app.app_context():
     admin.add_view(UsuarioModelView(Usuario, db.session))
     admin.add_view(ServicoModelView(Servico, db.session, name='Serviços'))
     admin.add_view(AgendamentoModelView(Agendamento, db.session))
     admin.add_view(SecureModelView(User, db.session, name='Admins'))
-# Rota de login
+
+# --- Rotas de Autenticação Admin ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if current_user.is_authenticated:
+        return redirect('/admin')
     if request.method == 'POST':
         user = User.query.filter_by(username=request.form['username']).first()
         if user and user.check_password(request.form['password']):
@@ -124,89 +109,64 @@ def login():
         </form>
     '''
 
-# Rota de logout
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     return 'Deslogado com sucesso'
 
-# Rota para criar admin (use só 1x!)
 @app.route('/criar_admin')
 def criar_admin():
-    # ADICIONE ESTA LINHA NO TOPO DA FUNÇÃO
-    # Isso irá criar TODAS as tabelas: User, Usuario, Servico, Agendamento
-    db.create_all()
-    
+    db.create_all() # Garante que todas as tabelas (novas e antigas) existam
     admin_username = os.environ.get("ADMIN_USERNAME")
     admin_password = os.environ.get("ADMIN_PASSWORD")
+    if not admin_username or not admin_password:
+        return "Variáveis ADMIN_USERNAME ou ADMIN_PASSWORD não definidas."
 
-    # Verifica se o admin já existe
     admin_existente = User.query.filter_by(username=admin_username).first()
     if admin_existente:
-        return f'Usuário "{admin_username}" já existe. As tabelas foram verificadas/criadas.'
+        return f'Usuário "{admin_username}" já existe. Tabelas verificadas/criadas.'
     
-    # Cria um novo admin
     novo_admin = User(username=admin_username)
     novo_admin.set_password(admin_password)
     db.session.add(novo_admin)
     db.session.commit()
-    
-    return f'Admin "{admin_username}" e todas as tabelas foram criados com sucesso!'
+    return f'Admin "{admin_username}" e tabelas criados com sucesso!'
 
+# --- Rotas Públicas ---
 @app.route('/')
 def index():
-    return render_template('index.html')  # Ou o caminho para o arquivo HTML
+    # Retorna um texto simples para o health check do Render
+    return "<h1>Bot de Agendamento no ar!</h1><p>Aponte o webhook do Twilio para /bot.</p>"
 
-# @app.route('/atender')
-# def atender():
-#     id_chamado = request.args.get("id_chamado")
-#     colaborador = request.args.get("colaborador")
-
-#     chamado = Chamado.query.filter_by(id=id_chamado).first()
-
-#     if not chamado:
-#         return {"erro": "Chamado não encontrado"}, 404
-
-#     chamado.status = "emandamento"
-#     chamado.pessoa_em_andamento = colaborador
-#     db.session.commit()
-
-#     return jsonify({"mensagem": "Chamado atualizado com sucesso"}), 200
-
-
-
+# --- Funções Auxiliares do Bot ---
 def listar_servicos_formatado():
-    """Busca os serviços no DB e retorna uma string formatada."""
     servicos = Servico.query.all()
     if not servicos:
-        return "Nenhum serviço disponível no momento."
+        return "Nenhum serviço disponível no momento. (Cadastre os serviços no /admin)"
     lista_texto = "Estes são os nossos serviços:\n\n"
     for i, servico in enumerate(servicos, 1):
         lista_texto += f"{i}️⃣ - *{servico.nome}*\n"
     return lista_texto
 
 def gerar_horarios_disponiveis(data_str):
-    """Gera uma lista de horários disponíveis para uma data."""
-    # Lógica simplificada: horários fixos das 9h às 17h, de hora em hora.
-    # Numa aplicação real, você consultaria o banco para ver horários já agendados.
     horarios = []
     try:
         data_obj = datetime.strptime(data_str, "%d/%m/%Y").date()
-        # Lógica para não agendar no passado
-        if data_obj < datetime.now(brasil_tz).date():
+        data_selecionada = brasil_tz.localize(datetime(data_obj.year, data_obj.month, data_obj.day))
+        
+        if data_selecionada < datetime.now(brasil_tz):
             return []
             
         hora_inicio = 9
         hora_fim = 17
-        for i, hora in enumerate(range(hora_inicio, hora_fim + 1)):
+        for i, hora in enumerate(range(hora_inicio, hora_fim)): # De 9:00 as 17:00
             horarios.append(f"{i+1} - {hora}:00")
         return horarios
     except ValueError:
         return []
 
 # --- Rota Principal do Bot ---
-
 @app.route("/bot", methods=["POST"])
 def processar_mensagem():
     dados = request.form
@@ -214,8 +174,7 @@ def processar_mensagem():
     mensagem_usuario = dados.get("Body", "").strip()
     resposta = MessagingResponse()
 
-    # GRUPO_INTERNO para notificações de novos agendamentos
-    GRUPO_INTERNO = 'whatsapp:+55SEUNUMERODEGRUPO' 
+    GRUPO_INTERNO = os.environ.get("GRUPO_WHATSAPP_INTERNO") # Ex: 'whatsapp:+5573...'
 
     # Busca ou cria o usuário
     usuario = Usuario.query.filter_by(telefone=telefone_usuario).first()
@@ -226,30 +185,40 @@ def processar_mensagem():
         resposta.message("Olá! Bem-vindo(a) ao nosso sistema de agendamento. Para começar, qual o seu nome?")
         return str(resposta)
 
-    # --- Máquina de Estados da Conversa ---
+    # --- Comandos de Admin ---
+    if telefone_usuario in ADMIN_PHONES:
+        if mensagem_usuario.lower().startswith("concluir "):
+            try:
+                agendamento_id = int(mensagem_usuario.split(" ")[1])
+                agendamento = Agendamento.query.get(agendamento_id)
+                if agendamento:
+                    agendamento.status = 'Concluido'
+                    db.session.commit()
+                    resposta.message(f"✅ Agendamento *{agendamento_id}* marcado como Concluído.")
+                else:
+                    resposta.message(f"Agendamento {agendamento_id} não encontrado.")
+            except (ValueError, IndexError):
+                resposta.message("Formato inválido. Use: *concluir [ID]*")
+            return str(resposta)
 
-    # 1. Recebendo o nome do usuário
+    # --- Máquina de Estados da Conversa ---
     if usuario.estado_atual == "aguardando_nome":
         usuario.nome = mensagem_usuario
         usuario.estado_atual = "menu_principal"
         db.session.commit()
         resposta.message(f"Olá, {usuario.nome}!\nComo posso te ajudar hoje?\n\n"
-                         "1️⃣ Ver Serviços\n"
-                         "2️⃣ Agendar um Serviço\n"
-                         "3️⃣ Meus Agendamentos")
+                         "1️⃣ Ver Nossos Serviços\n"
+                         "2️⃣ Agendar um Horário")
         return str(resposta)
 
-    # Lógica de voltar para o menu
     if mensagem_usuario.lower() == 'menu':
         usuario.estado_atual = "menu_principal"
         db.session.commit()
         resposta.message(f"Ok, {usuario.nome}. Voltamos ao menu principal.\n\n"
-                         "1️⃣ Ver Serviços\n"
-                         "2️⃣ Agendar um Serviço\n"
-                         "3️⃣ Meus Agendamentos")
+                         "1️⃣ Ver Nossos Serviços\n"
+                         "2️⃣ Agendar um Horário")
         return str(resposta)
         
-    # 2. Menu Principal
     if usuario.estado_atual == "menu_principal":
         if mensagem_usuario == "1":
             resposta.message(listar_servicos_formatado())
@@ -259,17 +228,12 @@ def processar_mensagem():
             db.session.commit()
             resposta.message(listar_servicos_formatado())
             resposta.message("\nPor favor, digite o *número* do serviço que você deseja agendar.")
-        elif mensagem_usuario == "3":
-            # Lógica para mostrar agendamentos (a ser implementada)
-            resposta.message("Funcionalidade 'Meus Agendamentos' em desenvolvimento.")
         else:
             resposta.message("Opção inválida. Por favor, escolha uma das opções abaixo:\n"
-                             "1️⃣ Ver Serviços\n"
-                             "2️⃣ Agendar um Serviço\n"
-                             "3️⃣ Meus Agendamentos")
+                             "1️⃣ Ver Nossos Serviços\n"
+                             "2️⃣ Agendar um Horário")
         return str(resposta)
 
-    # 3. Etapa de Agendamento: Escolha do serviço
     if usuario.estado_atual == "agendando_servico":
         try:
             servicos = Servico.query.all()
@@ -277,17 +241,16 @@ def processar_mensagem():
             usuario.temp_servico_id = servico_escolhido.id
             usuario.estado_atual = "agendando_data"
             db.session.commit()
-            resposta.message(f"Ótima escolha! Vamos agendar o serviço: *{servico_escolhido.nome}*.\n\n"
-                             "Por favor, digite a data que você deseja (ex: 31/12/2025).")
+            resposta.message(f"Ótima escolha! Vamos agendar: *{servico_escolhido.nome}*.\n\n"
+                             "Por favor, digite a data que você deseja (ex: 25/12/2025).")
         except (ValueError, IndexError):
             resposta.message("Por favor, digite um *número válido* da lista de serviços.")
         return str(resposta)
 
-    # 4. Etapa de Agendamento: Escolha da data
     if usuario.estado_atual == "agendando_data":
         horarios = gerar_horarios_disponiveis(mensagem_usuario)
         if not horarios:
-            resposta.message("Data inválida ou no passado. Por favor, digite uma data futura no formato DD/MM/YYYY.")
+            resposta.message("Data inválida, no passado ou sem horários. Por favor, digite uma data futura no formato DD/MM/YYYY.")
             return str(resposta)
             
         usuario.temp_data = mensagem_usuario
@@ -300,25 +263,29 @@ def processar_mensagem():
                          "Digite o *número* do horário que você prefere.")
         return str(resposta)
 
-    # 5. Etapa de Agendamento: Escolha do horário e confirmação
     if usuario.estado_atual == "agendando_horario":
         try:
             horarios_disponiveis = gerar_horarios_disponiveis(usuario.temp_data)
-            horario_selecionado_str = horarios_disponiveis[int(mensagem_usuario) - 1].split(" - ")[1] # Pega "HH:MM"
+            horario_selecionado_str = horarios_disponiveis[int(mensagem_usuario) - 1].split(" - ")[1]
             hora, minuto = map(int, horario_selecionado_str.split(':'))
             
             data_agendamento = datetime.strptime(usuario.temp_data, "%d/%m/%Y")
-            data_hora_agendamento = datetime(data_agendamento.year, data_agendamento.month, data_agendamento.day, hour=hora, minute=minuto)
             
-            # Salvar no banco
+            # **CORREÇÃO DE FUSO HORÁRIO**
+            # 1. Criar data/hora "naive" (sem fuso) no fuso do Brasil
+            data_hora_naive = datetime(data_agendamento.year, data_agendamento.month, data_agendamento.day, hour=hora, minute=minuto)
+            # 2. Localizar essa data/hora no fuso do Brasil
+            data_hora_brasil = brasil_tz.localize(data_hora_naive)
+            # 3. Converter para UTC para salvar no banco de dados
+            data_hora_utc = data_hora_brasil.astimezone(utc_tz)
+
             novo_agendamento = Agendamento(
                 usuario_id=usuario.id,
                 servico_id=usuario.temp_servico_id,
-                data_hora=data_hora_agendamento
+                data_hora=data_hora_utc # Salvar em UTC
             )
             db.session.add(novo_agendamento)
             
-            # Limpar dados temporários e voltar ao menu
             usuario.estado_atual = "menu_principal"
             usuario.temp_data = None
             usuario.temp_servico_id = None
@@ -326,249 +293,105 @@ def processar_mensagem():
 
             servico = Servico.query.get(novo_agendamento.servico_id)
 
-            # Mensagem de confirmação para o cliente
-            resposta.message(f"✅ Agendamento Confirmado!\n\n"
+            resposta.message(f"👍 Solicitação de agendamento recebida!\n\n"
                              f"Serviço: *{servico.nome}*\n"
-                             f"Data: *{novo_agendamento.data_hora.strftime('%d/%m/%Y')}*\n"
-                             f"Horário: *{novo_agendamento.data_hora.strftime('%H:%M')}*\n\n"
-                             "Obrigado! Para um novo serviço, basta enviar uma mensagem.")
+                             f"Data: *{data_hora_brasil.strftime('%d/%m/%Y')}*\n"
+                             f"Horário: *{data_hora_brasil.strftime('%H:%M')}*\n\n"
+                             "Em breve nossa equipe entrará em contato para confirmar.\n"
+                             "Para um novo serviço, digite 'menu'.")
             
-            # Mensagem de notificação para o grupo interno
-            mensagem_grupo = (
-                f"🎉 Novo Agendamento!\n\n"
-                f"Cliente: {usuario.nome}\n"
-                f"Telefone: {usuario.telefone}\n"
-                f"Serviço: {servico.nome}\n"
-                f"Data: {novo_agendamento.data_hora.strftime('%d/%m/%Y às %H:%M')}"
-            )
-            client.messages.create(
-                body=mensagem_grupo,
-                from_=os.environ.get('TWILIO_WHATSAPP_NUMBER'),
-                to=GRUPO_INTERNO
-            )
+            numero_destino = None
+            if GRUPO_INTERNO:
+                numero_destino = GRUPO_INTERNO  # Prioridade 1: O grupo (se você conseguir)
+            elif ADMIN_PHONES:
+                # Prioridade 2: O primeiro admin da lista (no formato +55...)
+                numero_destino = f"whatsapp:{ADMIN_PHONES[0]}" 
+
+            # Se tivermos um destino, enviar a notificação
+            if numero_destino:
+                mensagem_notificacao = (
+                    f"🔔 Nova Solicitação de Agendamento (ID: {novo_agendamento.id})\n\n"
+                    f"Cliente: {usuario.nome}\n"
+                    f"Telefone: {usuario.telefone}\n"
+                    f"Serviço: {servico.nome}\n"
+                    f"Data: {data_hora_brasil.strftime('%d/%m/%Y às %H:%M')}\n\n"
+                    f"Para concluir, responda: *concluir {novo_agendamento.id}*"
+                )
+                try:
+                    client.messages.create(
+                        body=mensagem_notificacao,
+                        from_=TWILIO_WHATSAPP_NUMBER,
+                        to=numero_destino
+                    )
+                except Exception as e:
+                    print(f"Erro ao enviar notificação para {numero_destino}: {e}")
             
         except (ValueError, IndexError):
             resposta.message("Por favor, digite um *número de horário válido* da lista.")
         
         return str(resposta)
 
-
-    # Mensagem padrão caso o estado se perca
     usuario.estado_atual = 'menu_principal'
     db.session.commit()
-    resposta.message(f"Desculpe, não entendi. Vamos voltar ao menu principal.\n\n"
-                     "1️⃣ Ver Serviços\n"
-                     "2️⃣ Agendar um Serviço\n"
-                     "3️⃣ Meus Agendamentos")
+    resposta.message(f"Desculpe, não entendi. Voltamos ao menu principal.\n\n"
+                     "1️⃣ Ver Nossos Serviços\n"
+                     "2️⃣ Agendar um Horário")
     return str(resposta)
 
+# --- NOVAS ROTAS DE API ---
 
-# @app.route("/chamados_abertos", methods=["GET"])
-# def chamados_abertos():
+def formatar_agendamento(agendamento):
+    """Converte um objeto Agendamento em um dicionário JSON seguro."""
     
-#     # Obter todos os chamados abertos, separados por setor
-#     chamados_ti = Chamado.query.filter_by(setor="TI", status="Aberto").all()
-#     chamados_manutencao = Chamado.query.filter_by(setor="Manutenção", status="Aberto").all()
-#     chamados_apoio = Chamado.query.filter_by(setor="Apoio", status="Aberto").all()
-    
-#     # Organizar os dados para enviar como JSON
-#     chamados_data = {
-#         "TI": [{
-#             "id": chamado.id,
-#             "descricao": chamado.descricao,
-#             "status":chamado.status,
-#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-#             "horario_criacao": utc_tz.localize(chamado.horario_criacao).astimezone(brasil_tz).strftime('%H:%M') if chamado.horario_criacao else None,
-#             "chamado_id": chamado.chamado_id,
-#             "setor_cliente": chamado.setor_cliente,
-#             "nome": chamado.nome
-#         } for chamado in chamados_ti],
+    # Converter de UTC (do banco) para o fuso do Brasil
+    data_hora_utc = agendamento.data_hora.replace(tzinfo=utc_tz)
+    data_hora_brasil = data_hora_utc.astimezone(brasil_tz)
+
+    return {
+        "id_agendamento": agendamento.id,
+        "status": agendamento.status,
+        "data_agendamento": data_hora_brasil.strftime('%d/%m/%Y'),
+        "hora_agendamento": data_hora_brasil.strftime('%H:%M'),
+        "data_criacao_utc": agendamento.data_criacao.isoformat(),
+        "cliente": {
+            "nome": agendamento.usuario.nome,
+            "telefone": agendamento.usuario.telefone
+        },
+        "servico": {
+            "nome": agendamento.servico.nome,
+            "descricao": agendamento.servico.descricao
+        }
+    }
+
+@app.route("/agendamentos/abertos", methods=["GET"])
+def agendamentos_abertos():
+    try:
+        agendamentos = Agendamento.query.filter(
+            Agendamento.status.in_(['Aberto', 'Confirmado'])
+        ).order_by(Agendamento.data_hora.asc()).all()
         
-#         "Manutencao": [{
-#             "id": chamado.id,
-#             "descricao": chamado.descricao,
-#             "status":chamado.status,
-#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-#             "horario_criacao": utc_tz.localize(chamado.horario_criacao).astimezone(brasil_tz).strftime('%H:%M') if chamado.horario_criacao else None,
-#             "setor_cliente": chamado.setor_cliente,
-#             "nome": chamado.nome
-#         } for chamado in chamados_manutencao],
+        lista_agendamentos = [formatar_agendamento(ag) for ag in agendamentos]
         
-#         "Apoio": [{
-#             "id": chamado.id,
-#             "descricao": chamado.descricao,
-#             "status":chamado.status,
-#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-#             "horario_criacao": utc_tz.localize(chamado.horario_criacao).astimezone(brasil_tz).strftime('%H:%M') if chamado.horario_criacao else None,
-#             "setor_cliente": chamado.setor_cliente,
-#             "nome": chamado.nome,
-#             "sala": chamado.sala
-#         } for chamado in chamados_apoio]
-#     }
-    
-#     return jsonify(chamados_data)
+        return jsonify(lista_agendamentos)
+    except Exception as e:
+        return jsonify({"erro": str(e)}), 500
 
-
-# @app.route("/chamados_concluidos", methods=["GET"])
-# def chamados_concluidos():
-    
-#     # Obter todos os chamados concluidos, separados por setor
-#     chamados_ti = Chamado.query.filter_by(setor="TI", status="Concluído").all()
-#     chamados_manutencao = Chamado.query.filter_by(setor="Manutenção", status="Concluído").all()
-#     chamados_apoio = Chamado.query.filter_by(setor="Apoio", status="Concluído").all()
-    
-#     # Organizar os dados para enviar como JSON
-#     chamados_data = {
-#         "TI": [{
-#             "id": chamado.id,
-#             "descricao": chamado.descricao,
-#             "status":chamado.status,
-#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-#             "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
-#             "chamado_id": chamado.chamado_id,
-#             "setor_cliente": chamado.setor_cliente,
-#             "nome": chamado.nome,
-#             "pessoa_conclusao": chamado.pessoa_conclusao,
-#             "data": chamado.data.strftime('%d/%m/%Y')
-#         } for chamado in chamados_ti],
+@app.route("/agendamentos/concluidos", methods=["GET"])
+def agendamentos_concluidos():
+    try:
+        agendamentos = Agendamento.query.filter_by(
+            status='Concluido'
+        ).order_by(Agendamento.data_hora.desc()).all()
         
-#         "Manutencao": [{
-#             "id": chamado.id,
-#             "descricao": chamado.descricao,
-#             "status":chamado.status,
-#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-#             "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
-#             "setor_cliente": chamado.setor_cliente,
-#             "nome": chamado.nome,
-#             "pessoa_conclusao": chamado.pessoa_conclusao,
-#             "data": chamado.data.strftime('%d/%m/%Y')
-#         } for chamado in chamados_manutencao],
+        lista_agendamentos = [formatar_agendamento(ag) for ag in agendamentos]
         
-#         "Apoio": [{
-#             "id": chamado.id,
-#             "descricao": chamado.descricao,
-#             "status":chamado.status,
-#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-#             "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
-#             "setor_cliente": chamado.setor_cliente,
-#             "nome": chamado.nome,
-#             "pessoa_conclusao": chamado.pessoa_conclusao,
-#             "sala": chamado.sala,
-#             "data": chamado.data.strftime('%d/%m/%Y')
-#         } for chamado in chamados_apoio]
-#     }
-    
-#     return jsonify(chamados_data)
+        return jsonify(lista_agendamentos)
+    except Exception as e:
+        return jsonify({"erro": str(e)}), 500
 
-# @app.route("/chamados_andamento", methods=["GET"])
-# def chamados_andamento():
-    
-#     # Obter todos os chamados concluidos, separados por setor
-#     chamados_ti = Chamado.query.filter_by(setor="TI", status="Em andamento").all()
-#     chamados_manutencao = Chamado.query.filter_by(setor="Manutenção", status="Em andamento").all()
-#     chamados_apoio = Chamado.query.filter_by(setor="Apoio", status="Em andamento").all()
-    
-#     # Organizar os dados para enviar como JSON
-#     chamados_data = {
-#         "TI": [{
-#             "id": chamado.id,
-#             "descricao": chamado.descricao,
-#             "status":chamado.status,
-#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-#             "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
-#             "chamado_id": chamado.chamado_id,
-#             "setor_cliente": chamado.setor_cliente,
-#             "nome": chamado.nome,
-#             "pessoa_conclusao": chamado.pessoa_conclusao,
-#             "pessoa_em_andamento": chamado.pessoa_em_andamento,
-#             "data": chamado.data
-#         } for chamado in chamados_ti],
-        
-#         "Manutencao": [{
-#             "id": chamado.id,
-#             "descricao": chamado.descricao,
-#             "status":chamado.status,
-#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-#             "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
-#             "setor_cliente": chamado.setor_cliente,
-#             "nome": chamado.nome,
-#             "pessoa_conclusao": chamado.pessoa_conclusao,
-#             "pessoa_em_andamento": chamado.pessoa_em_andamento,
-#             "data": chamado.data
-#         } for chamado in chamados_manutencao],
-        
-#         "Apoio": [{
-#             "id": chamado.id,
-#             "descricao": chamado.descricao,
-#             "status":chamado.status,
-#             "data_criacao": chamado.data_criacao.strftime('%d/%m/%Y'),
-#             "horario_criacao": chamado.horario_criacao.strftime('%H:%M'),
-#             "setor_cliente": chamado.setor_cliente,
-#             "nome": chamado.nome,
-#             "pessoa_conclusao": chamado.pessoa_conclusao,
-#             "pessoa_em_andamento": chamado.pessoa_em_andamento,
-#             "sala": chamado.sala,
-#             "data": chamado.data
-#         } for chamado in chamados_apoio]
-#     }
-    
-#     return jsonify(chamados_data)
-
-
-# @app.route('/chamados-atender/<int:id>', methods=['POST'])
-# def atender_chamado(id):
-#     data = request.get_json()
-
-#     nome_responsavel = data.get("nome")
-#     telefone_responsavel = data.get("telefone")
-
-#     if not nome_responsavel or not telefone_responsavel:
-#         return jsonify({"erro": "Nome e telefone são obrigatórios."}), 400
-
-#     chamado = Chamado.query.get_or_404(id)
-
-#     if chamado.status != "Aberto":
-#         return jsonify({"erro": "Chamado já foi atendido ou está em andamento."}), 400
-
-#     chamado.pessoa_em_andamento = nome_responsavel
-#     chamado.status = "Em andamento"
-
-#     db.session.commit()
-
-#     return jsonify({
-#         "mensagem": "Chamado atribuído com sucesso.",
-#         "chamado_id": chamado.id,
-#         "responsavel": nome_responsavel
-#     })
-
-# @app.route('/chamados-concluir/<int:id>', methods=['POST'])
-# def concluir_chamado(id):
-#     data = request.get_json()
-
-#     nome_responsavel = data.get("nome")
-#     telefone_responsavel = data.get("telefone")
-
-#     if not nome_responsavel or not telefone_responsavel:
-#         return jsonify({"erro": "Nome e telefone são obrigatórios."}), 400
-
-#     chamado = Chamado.query.get_or_404(id)
-
-#     if chamado.status != "Aberto" and chamado.status != "Em andamento":
-#         return jsonify({"erro": "Chamado já foi atendido ou está em andamento."}), 400
-
-#     chamado.horario = datetime.now(brasil_tz).time()
-#     chamado.data = datetime.now().date()
-#     chamado.pessoa_conclusao = nome_responsavel
-#     chamado.status = "Concluído"
-
-#     db.session.commit()
-
-#     return jsonify({
-#         "mensagem": "Chamado concluído com sucesso.",
-#         "chamado_id": chamado.id,
-#         "responsavel": nome_responsavel
-#     })
-    
+# --- Inicialização ---
 if __name__ == "__main__":
-    criar_tabelas()  # Garantir que as tabelas sejam criadas
+    # O Render usa gunicorn, então isso roda apenas localmente
+    with app.app_context():
+        db.create_all()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
