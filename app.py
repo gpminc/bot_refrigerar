@@ -221,13 +221,13 @@ def processar_mensagem():
         
     if usuario.estado_atual == "menu_principal":
         if mensagem_usuario == "1":
-            resposta.message(listar_servicos_formatado())
-            resposta.message("Digite '2' para agendar ou 'menu' para voltar.")
+            servicos_formatados = listar_servicos_formatado()
+            resposta.message(f"{servicos_formatados}\n\nDigite '2' para agendar ou 'menu' para voltar.")
         elif mensagem_usuario == "2":
             usuario.estado_atual = "agendando_servico"
             db.session.commit()
-            resposta.message(listar_servicos_formatado())
-            resposta.message("\nPor favor, digite o *número* do serviço que você deseja agendar.")
+            servicos_formatados = listar_servicos_formatado()
+            resposta.message(f"{servicos_formatados}\n\nPor favor, digite o *número* do serviço que você deseja agendar.")
         else:
             resposta.message("Opção inválida. Por favor, escolha uma das opções abaixo:\n"
                              "1️⃣ Ver Nossos Serviços\n"
