@@ -134,19 +134,25 @@ def logout():
 # Rota para criar admin (use só 1x!)
 @app.route('/criar_admin')
 def criar_admin():
+    # ADICIONE ESTA LINHA NO TOPO DA FUNÇÃO
+    # Isso irá criar TODAS as tabelas: User, Usuario, Servico, Agendamento
+    db.create_all()
+    
     admin_username = os.environ.get("ADMIN_USERNAME")
     admin_password = os.environ.get("ADMIN_PASSWORD")
 
+    # Verifica se o admin já existe
     admin_existente = User.query.filter_by(username=admin_username).first()
     if admin_existente:
-        return f'Usuário "{admin_username}" já existe.'
+        return f'Usuário "{admin_username}" já existe. As tabelas foram verificadas/criadas.'
     
+    # Cria um novo admin
     novo_admin = User(username=admin_username)
     novo_admin.set_password(admin_password)
     db.session.add(novo_admin)
     db.session.commit()
     
-    return f'Usuário administrador "{admin_username}" criado com sucesso!'
+    return f'Admin "{admin_username}" e todas as tabelas foram criados com sucesso!'
 
 @app.route('/')
 def index():
