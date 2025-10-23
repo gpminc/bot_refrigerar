@@ -10,7 +10,8 @@ from flask_admin.contrib.sqla import ModelView
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from werkzeug.security import generate_password_hash, check_password_hash
 import pytz
-from datetime import datetime, timedelta
+# 1. IMPORTAÇÃO ATUALIZADA
+from datetime import datetime, timedelta 
 
 # --- Configuração Inicial ---
 load_dotenv()
@@ -149,22 +150,68 @@ def listar_servicos_formatado():
         lista_texto += f"{i}️⃣ - *{servico.nome}*\n"
     return lista_texto
 
+# 2. FUNÇÃO DE HORÁRIOS ATUALIZADA
 def gerar_horarios_disponiveis(data_str):
-    horarios = []
+    horarios_disponiveis = []
     try:
+        # 1. Validar a data e fuso do Brasil
         data_obj = datetime.strptime(data_str, "%d/%m/%Y").date()
         data_selecionada = brasil_tz.localize(datetime(data_obj.year, data_obj.month, data_obj.day))
-        
-        if data_selecionada < datetime.now(brasil_tz):
-            return []
-            
+        agora_br = datetime.now(brasil_tz)
+
+        # 2. Verificar se a data é no passado
+        if data_selecionada.date() < agora_br.date():
+             return []
+
+        # 3. Definir o período de consulta em UTC (Aware)
+        start_day_utc = data_selecionada.astimezone(utc_tz)
+        end_day_utc = (data_selecionada + timedelta(days=1)).astimezone(utc_tz)
+
+        # --- CORREÇÃO AQUI ---
+        # 4. Converter para UTC (Naive) para corresponder ao banco de dados
+        # O banco de dados está salvando em UTC naive (padrão do Render/SQLAlchemy)
+        start_day_utc_naive = start_day_utc.replace(tzinfo=None)
+        end_day_utc_naive = end_day_utc.replace(tzinfo=None)
+
+        # 5. Consultar o banco de dados usando datetimes NAIVE
+        agendamentos_no_dia = Agendamento.query.filter(
+            Agendamento.data_hora >= start_day_utc_naive,
+            Agendamento.data_hora < end_day_utc_naive
+        ).all()
+
+        # 6. Criar uma lista de horas já reservadas (em fuso Brasil)
+        horas_reservadas = set()
+        for ag in agendamentos_no_dia:
+            # O ag.data_hora é naive (ex: 12:00), mas sabemos que é UTC.
+            # Então, adicionamos o fuso UTC e convertemos para o Brasil.
+            hora_agendada_utc = ag.data_hora.replace(tzinfo=utc_tz)
+            hora_agendada_br = hora_agendada_utc.astimezone(brasil_tz)
+            horas_reservadas.add(hora_agendada_br.strftime('%H:%M')) # Ex: "09:00"
+
+        # 7. Gerar a lista de horários do dia e filtrar
         hora_inicio = 9
-        hora_fim = 17
-        for i, hora in enumerate(range(hora_inicio, hora_fim)): # De 9:00 as 17:00
-            horarios.append(f"{i+1} - {hora}:00")
-        return horarios
-    except ValueError:
-        return []
+        hora_fim = 17 # (até 17:00, então 16:00 é o último)
+        contador_opcao = 1
+        
+        for hora in range(hora_inicio, hora_fim):
+            hora_str = f"{hora}:00" 
+            hora_formatada_comparacao = f"{hora:02d}:00" # "09:00"
+
+            # 8. Verificar se já passou da hora (para agendamentos no mesmo dia)
+            horario_do_slot = brasil_tz.localize(datetime(data_obj.year, data_obj.month, data_obj.day, hora, 0))
+            if data_obj == agora_br.date() and horario_do_slot < agora_br:
+                continue # Pula o horário se for hoje e já tiver passado
+
+            # 9. Adicionar à lista apenas se não estiver reservado
+            if hora_formatada_comparacao not in horas_reservadas:
+                horarios_disponiveis.append(f"{contador_opcao} - {hora_str}")
+                contador_opcao += 1
+
+        return horarios_disponiveis
+    except Exception as e:
+        # Adicionar um print para debugar caso falhe
+        print(f"Erro ao gerar horários: {e}")
+        return [] # Retorna lista vazia em caso de erro
 
 # --- Rota Principal do Bot ---
 @app.route("/bot", methods=["POST"])
@@ -221,11 +268,13 @@ def processar_mensagem():
         
     if usuario.estado_atual == "menu_principal":
         if mensagem_usuario == "1":
+            # --- COMBINADO EM UMA SÓ MENSAGEM ---
             servicos_formatados = listar_servicos_formatado()
             resposta.message(f"{servicos_formatados}\n\nDigite '2' para agendar ou 'menu' para voltar.")
         elif mensagem_usuario == "2":
             usuario.estado_atual = "agendando_servico"
             db.session.commit()
+            # --- COMBINADO EM UMA SÓ MENSAGEM ---
             servicos_formatados = listar_servicos_formatado()
             resposta.message(f"{servicos_formatados}\n\nPor favor, digite o *número* do serviço que você deseja agendar.")
         else:
@@ -272,11 +321,8 @@ def processar_mensagem():
             data_agendamento = datetime.strptime(usuario.temp_data, "%d/%m/%Y")
             
             # **CORREÇÃO DE FUSO HORÁRIO**
-            # 1. Criar data/hora "naive" (sem fuso) no fuso do Brasil
             data_hora_naive = datetime(data_agendamento.year, data_agendamento.month, data_agendamento.day, hour=hora, minute=minuto)
-            # 2. Localizar essa data/hora no fuso do Brasil
             data_hora_brasil = brasil_tz.localize(data_hora_naive)
-            # 3. Converter para UTC para salvar no banco de dados
             data_hora_utc = data_hora_brasil.astimezone(utc_tz)
 
             novo_agendamento = Agendamento(
@@ -300,9 +346,12 @@ def processar_mensagem():
                              "Em breve nossa equipe entrará em contato para confirmar.\n"
                              "Para um novo serviço, digite 'menu'.")
             
+            # --- Bloco de Notificação (Novo e Melhorado) ---
+            
+            # Define para quem enviar a notificação
             numero_destino = None
             if GRUPO_INTERNO:
-                numero_destino = GRUPO_INTERNO  # Prioridade 1: O grupo (se você conseguir)
+                numero_destino = GRUPO_INTERNO  # Prioridade 1: O grupo
             elif ADMIN_PHONES:
                 # Prioridade 2: O primeiro admin da lista (no formato +55...)
                 numero_destino = f"whatsapp:{ADMIN_PHONES[0]}" 
