@@ -1,7 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
-
-import pytz
+import pytz 
 
 db = SQLAlchemy()
 
@@ -10,8 +9,19 @@ class Usuario(db.Model):
     telefone = db.Column(db.String(20), unique=True, nullable=False)
     nome = db.Column(db.String(100))
     estado_atual = db.Column(db.String(50), default='inicio')
+    
+    # Campos temporários de agendamento
     temp_servico_id = db.Column(db.Integer)
     temp_data = db.Column(db.String(10))
+    
+    # Campos temporários do esboço
+    temp_endereco = db.Column(db.String(200))
+    temp_queixa = db.Column(db.String(500))
+    temp_btus = db.Column(db.String(50))
+    temp_marca = db.Column(db.String(100))
+
+    # --- NOVO CAMPO DE TIMEOUT ---
+    last_interaction_time = db.Column(db.DateTime, default=lambda: datetime.now(pytz.utc))
 
     agendamentos = db.relationship('Agendamento', backref='usuario', lazy=True)
 
@@ -28,9 +38,13 @@ class Agendamento(db.Model):
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
     servico_id = db.Column(db.Integer, db.ForeignKey('servico.id'), nullable=False)
     
-    # Armazenaremos a data e hora sempre em UTC para consistência
     data_hora = db.Column(db.DateTime, nullable=False) 
+    status = db.Column(db.String(20), default='Aberto')
     
-    # O status agora é mais flexível
-    status = db.Column(db.String(20), default='Aberto') # Status: Aberto, Confirmado, Concluido, Cancelado
     data_criacao = db.Column(db.DateTime, default=lambda: datetime.now(pytz.utc))
+    
+    # Campos permanentes do esboço
+    endereco = db.Column(db.String(200))
+    queixa = db.Column(db.String(500))
+    btus = db.Column(db.String(50))
+    marca = db.Column(db.String(100))
