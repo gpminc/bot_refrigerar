@@ -20,10 +20,11 @@ class Usuario(db.Model):
     temp_btus = db.Column(db.String(50))
     temp_marca = db.Column(db.String(100))
 
-    # --- NOVO CAMPO DE TIMEOUT ---
+    # Campo de Timeout
     last_interaction_time = db.Column(db.DateTime, default=lambda: datetime.now(pytz.utc))
 
-    agendamentos = db.relationship('Agendamento', backref='usuario', lazy=True)
+    # --- [MODIFICADO] Relação explícita ---
+    agendamentos = db.relationship('Agendamento', back_populates='usuario', lazy=True)
 
 class Servico(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -31,7 +32,8 @@ class Servico(db.Model):
     descricao = db.Column(db.String(500))
     duracao_minutos = db.Column(db.Integer, default=60)
 
-    agendamentos = db.relationship('Agendamento', backref='servico', lazy=True)
+    # --- [MODIFICADO] Relação explícita ---
+    agendamentos = db.relationship('Agendamento', back_populates='servico', lazy=True)
 
 class Agendamento(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -48,3 +50,8 @@ class Agendamento(db.Model):
     queixa = db.Column(db.String(500))
     btus = db.Column(db.String(50))
     marca = db.Column(db.String(100))
+    
+    # --- [ADICIONADO] Relações explícitas ---
+    # Isso corrige o erro do Flask-Admin
+    usuario = db.relationship('Usuario', back_populates='agendamentos')
+    servico = db.relationship('Servico', back_populates='agendamentos')
