@@ -187,31 +187,48 @@ def processar_mensagem():
     if not usuario:
         usuario = Usuario(telefone=telefone_usuario, 
                           estado_atual="aguardando_nome",
-                          last_interaction_time=agora_utc) # Define a hora para o novo usuário
+                          last_interaction_time=agora_utc)
         db.session.add(usuario); db.session.commit()
         resposta.message("Olá! Bem-vindo(a) ao nosso sistema de agendamento. Para começar, qual o seu nome?")
         return str(resposta)
 
-    # --- [NOVA LÓGICA DE TIMEOUT DE 15 MINUTOS] ---
-    if not usuario.last_interaction_time: # Para usuários antigos
+    # --- [LÓGICA DE DEBUG DE TIMEOUT] ---
+    print(f"--- INICIO DO CHECK DE TIMEOUT PARA {telefone_usuario} ---")
+    print(f"Hora atual (UTC): {agora_utc}")
+    print(f"Última interação (do DB): {usuario.last_interaction_time}")
+    print(f"Estado atual do usuário: {usuario.estado_atual}")
+
+    if not usuario.last_interaction_time:
         usuario.last_interaction_time = agora_utc
-    
-    # Compara a hora atual com a última interação (ambas em UTC)
-    delta = agora_utc - usuario.last_interaction_time.replace(tzinfo=utc_tz)
-    
-    # 900 segundos = 15 minutos
-    if delta.total_seconds() > 900 and mensagem_usuario.lower() != 'menu':
-        # Se o usuário não estava no menu, avise-o do reset
-        if usuario.estado_atual != 'menu_principal':
-            resposta.message("Você demorou muito para responder. Vamos recomeçar do menu principal.")
+
+    try:
+        # Garante que o objeto do banco de dados seja 'aware'
+        ultima_interacao_aware = usuario.last_interaction_time.replace(tzinfo=utc_tz)
+        delta = agora_utc - ultima_interacao_aware
+        delta_segundos = delta.total_seconds()
         
-        # Reseta o estado para o menu ANTES de processar a mensagem atual
-        usuario.estado_atual = "menu_principal"
-    
+        print(f"Última interação (convertida para Aware UTC): {ultima_interacao_aware}")
+        print(f"Diferença em segundos: {delta_segundos}")
+
+        # 900 segundos = 15 minutos
+        if delta_segundos > 900 and mensagem_usuario.lower() != 'menu':
+            print(">>> TIMEOUT DETECTADO! Resetando para o menu principal.")
+            if usuario.estado_atual != 'menu_principal':
+                resposta.message("Você demorou muito para responder. Vamos recomeçar do menu principal.")
+            
+            usuario.estado_atual = "menu_principal"
+        else:
+            print("--- NENHUM TIMEOUT DETECTADO ---")
+
+    except Exception as e:
+        print(f"!!!!!! ERRO NO BLOCO DE TIMEOUT: {e} !!!!!!")
+
     # ATUALIZA o timestamp em CADA interação
     usuario.last_interaction_time = agora_utc
     db.session.commit()
-    # --- [FIM DA LÓGICA DE TIMEOUT] ---
+    print("--- FIM DO CHECK DE TIMEOUT ---")
+    # --- [FIM DA LÓGICA DE DEBUG] ---
+
 
     # --- Comandos de Admin ---
     if telefone_usuario in ADMIN_PHONES:
@@ -227,7 +244,7 @@ def processar_mensagem():
                 resposta.message("Formato inválido. Use: *concluir [ID]*")
             return str(resposta)
 
-    # --- Máquina de Estados da Conversa ---
+    # --- Máquina de Estados da Conversa (código restante continua igual) ---
     if usuario.estado_atual == "aguardando_nome":
         usuario.nome = mensagem_usuario
         usuario.estado_atual = "menu_principal"
@@ -244,6 +261,8 @@ def processar_mensagem():
                          "2️⃣ Agendar um Horário")
         return str(resposta)
     
+    # ... (o resto do seu código da função continua aqui, sem alterações)
+    # ... (copie e cole o resto da função a partir daqui)
     if usuario.estado_atual == "menu_principal":
         if mensagem_usuario == "1":
             servicos_formatados = listar_servicos_formatado_apenas_lista()
@@ -264,6 +283,7 @@ def processar_mensagem():
             servicos = Servico.query.all()
             servico_escolhido = servicos[int(mensagem_usuario) - 1]
             usuario.temp_servico_id = servico_escolhido.id
+            
             usuario.estado_atual = "coletando_endereco"
             db.session.commit()
             resposta.message(f"Ótima escolha: *{servico_escolhido.nome}*.\n\n"
