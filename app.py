@@ -309,7 +309,7 @@ def processar_mensagem():
         return str(resposta)
 
     if usuario.estado_atual == "agendando_data":
-        horarios = gerar_horarios_disponis(mensagem_usuario)
+        horarios = gerar_horarios_disponiveis(mensagem_usuario)
         if not horarios:
             resposta.message("Data inválida, no passado ou sem horários disponíveis. Por favor, digite uma data futura no formato DD/MM/YYYY.")
             return str(resposta)
@@ -324,7 +324,7 @@ def processar_mensagem():
 
     if usuario.estado_atual == "agendando_horario":
         try:
-            horarios_disponis = gerar_horarios_disponis(usuario.temp_data)
+            horarios_disponis = gerar_horarios_disponiveis(usuario.temp_data)
             horario_selecionado_str = horarios_disponis[int(mensagem_usuario) - 1].split(" - ")[1]
             hora, minuto = map(int, horario_selecionado_str.split(':'))
             data_agendamento = datetime.strptime(usuario.temp_data, "%d/%m/%Y")
